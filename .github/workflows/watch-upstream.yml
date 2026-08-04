@@ -12,6 +12,7 @@ on:
 permissions:
   contents: write       # push the bump branch
   pull-requests: write  # open + auto-merge the PR
+  actions: write        # dispatch build.yml workflow
 
 jobs:
   watch:
@@ -99,3 +100,13 @@ jobs:
           # added later and are still pending).
           gh pr merge "$BRANCH" --squash \
             || gh pr merge "$BRANCH" --squash --auto
+
+      - name: Trigger release build workflow
+        if: steps.chk.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Triggering build.yml workflow on zap1 branch..."
+          sleep 5
+          gh workflow run build.yml --ref zap1
+
