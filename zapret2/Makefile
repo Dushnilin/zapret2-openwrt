@@ -1,5 +1,6 @@
 #
 # Copyright (c) 2025 remittor
+# Upstream repository: bol-van/zapret2
 #
 
 include $(TOPDIR)/rules.mk
