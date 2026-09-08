@@ -3,6 +3,7 @@ name: watch-upstream
 # Poll bol-van/zapret2 for a new release and, when found, bump the package pin and
 # kick off build.yml — so the fork auto-rebuilds every time upstream ships a release.
 # (GitHub can't deliver another repo's release event here, hence the schedule.)
+# Pushes directly to zap1; no PR needed.
 
 on:
   schedule:
@@ -10,8 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write       # push the bump branch
-  pull-requests: write  # open + auto-merge the PR
+  contents: write       # push the version bump
   actions: write        # dispatch build.yml workflow
 
 jobs:
@@ -64,42 +64,22 @@ jobs:
           echo "----- zapret2/Makefile head -----"
           sed -n '7,18p' zapret2/Makefile
 
-      - name: Open PR with version bump
+      - name: Push version bump to zap1
         if: steps.chk.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
           VER='${{ steps.chk.outputs.ver }}'
           SHA='${{ steps.chk.outputs.sha }}'
-          BRANCH="bump-nfqws2-$VER"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # A repo ruleset blocks force-push and deletion on any branch, so a prior
-          # failed run's branch can't be rewritten or cleaned up — reuse it instead of
-          # minting a new one (this runs on a 6h cron, so retries must be idempotent).
-          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
-            echo "Branch $BRANCH already exists on origin, reusing it."
+          git checkout zap1
+          git add zapret2/Makefile luci-app-zapret2/Makefile
+          if git diff --cached --quiet; then
+            echo "No changes to commit — already up to date locally."
           else
-            git checkout -b "$BRANCH"
-            git add zapret2/Makefile luci-app-zapret2/Makefile
             git commit -m "zapret2: bump to $VER (nfqws2 $SHA)"
-            git push -u origin "$BRANCH"
+            git push origin zap1
           fi
-          # zap1 requires changes via PR, so we can't push straight to it. Open the PR
-          # if it isn't already open. build.yml then fires on the resulting push to zap1
-          # (see its `on.push` trigger).
-          if ! gh pr view "$BRANCH" > /dev/null 2>&1; then
-            gh pr create --base zap1 --head "$BRANCH" \
-              --title "zapret2: bump to $VER" \
-              --body "Automated bump of nfqws2 to \`$VER\` (upstream commit \`$SHA\`)."
-          fi
-          # zap1 has no required status checks, so the PR is immediately mergeable and
-          # `--auto` is rejected ("clean status"). Try a direct merge; fall back to
-          # queuing auto-merge only if the merge is currently blocked (e.g. checks were
-          # added later and are still pending).
-          gh pr merge "$BRANCH" --squash \
-            || gh pr merge "$BRANCH" --squash --auto
 
       - name: Trigger release build workflow
         if: steps.chk.outputs.changed == 'true'
