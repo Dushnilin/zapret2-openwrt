@@ -28,13 +28,41 @@
 ## 📦 Установка
 
 ### 📶 OpenWrt 25.12+ (Менеджер пакетов APK)
+
+#### Подписанный APK-фид
+
+Фид содержит `zapret2` и `luci-app-zapret2`. APK выбирает индекс
+по архитектуре из `/etc/apk/arch`.
+
+```sh
+base=https://github.com/Dushnilin/zapret2-openwrt/releases/latest/download
+wget -O /tmp/zapret2-dushnilin.pub "$base/zapret2-dushnilin.pub" &&
+    sha256sum /tmp/zapret2-dushnilin.pub
+```
+
+Сверьте SHA-256 ключа с примечаниями к последнему релизу. При совпадении
+выполните в той же SSH-сессии:
+
+```sh
+cp /tmp/zapret2-dushnilin.pub /etc/apk/keys/ &&
+    printf '%s\n' "$base/packages-$(cat /etc/apk/arch).adb" \
+        > /etc/apk/repositories.d/zapret2.list &&
+    apk update &&
+    apk add luci-app-zapret2
+```
+
+`luci-app-zapret2` установит `zapret2` как зависимость. Для установки без LuCI
+используйте `apk add zapret2`.
+
+#### Установка из файлов APK
+
 ```sh
 # 1. Добавление публичного ключа подписи
 wget -O /etc/apk/keys/zapret2-dushnilin.pub https://github.com/Dushnilin/zapret2-openwrt/releases/latest/download/zapret2-dushnilin.pub
 
 # 2. Скачивание пакета zapret2 под вашу архитектуру и LuCI UI
 wget -O /tmp/zapret2.apk "https://github.com/Dushnilin/zapret2-openwrt/releases/latest/download/zapret2_$(. /etc/os-release; echo "$OPENWRT_ARCH").apk"
-wget -O /tmp/luci-app-zapret2.apk https://github.com/Dushnilin/zapret2-openwrt/releases/latest/download/luci-app-zapret2.apk
+wget -O /tmp/luci-app-zapret2.apk https://github.com/Dushnilin/zapret2-openwrt/releases/latest/download/luci-app-zapret2_noarch.apk
 
 # 3. Установка
 apk add /tmp/zapret2.apk /tmp/luci-app-zapret2.apk
@@ -75,6 +103,14 @@ opkg install /tmp/zapret2.ipk /tmp/luci-app-zapret2.ipk
 # Обновить и сразу отправить в ветку zap1 для автосборки релиза
 ./sync-upstream.sh --push
 ```
+
+---
+
+## 🔑 Публикация подписанного APK-фида
+
+Для публикации релиза задайте в GitHub Actions секрет `SIGN_PRIVATE_KEY`
+с приватным ключом OpenSSL в формате PEM. Этот ключ подписывает APK и
+индексы фида.
 
 ---
 

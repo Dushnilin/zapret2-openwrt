@@ -167,24 +167,43 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Download all artifacts
         uses: actions/download-artifact@v8
         with:
           pattern: pkgs-*
           merge-multiple: true
           path: packages/
-      - name: Publish public signing key
+      - name: Build signed APK feed
         # Derive the public key from the private signing key and ship it so users can
         # trust the signed .apk files. apk matches keys by pubkey hash, not filename,
         # so the file just needs to land in /etc/apk/keys/ on the client.
         env:
           SIGN_PRIVATE_KEY: ${{ secrets.SIGN_PRIVATE_KEY }}
+          TAG: ${{ needs.meta.outputs.tag }}
         run: |
-          [ -z "$SIGN_PRIVATE_KEY" ] && { echo "No signing key — packages are unsigned, no .pub to publish."; exit 0; }
-          printf '%s\n' "$SIGN_PRIVATE_KEY" > /tmp/sign.raw
-          openssl pkey -in /tmp/sign.raw -noout 2>/dev/null || { base64 -d /tmp/sign.raw > /tmp/sign.dec 2>/dev/null && mv /tmp/sign.dec /tmp/sign.raw; }
-          openssl pkey -in /tmp/sign.raw -pubout -out packages/zapret2-dushnilin.pub
-          echo "Published public key:"; cat packages/zapret2-dushnilin.pub
+          if [ -z "$SIGN_PRIVATE_KEY" ]; then
+            echo "::error::Set SIGN_PRIVATE_KEY to publish a release with signed APK indexes."
+            exit 1
+          fi
+          key_dir=$(mktemp -d)
+          trap 'rm -rf "$key_dir"' EXIT
+          umask 077
+          printf '%s\n' "$SIGN_PRIVATE_KEY" > "$key_dir/raw"
+          if openssl pkey -in "$key_dir/raw" -noout 2>/dev/null; then
+            mv "$key_dir/raw" "$key_dir/sign.pem"
+          else
+            base64 -d "$key_dir/raw" > "$key_dir/sign.pem"
+          fi
+          openssl pkey -in "$key_dir/sign.pem" -pubout -out packages/zapret2-dushnilin.pub
+          docker run --rm -v "$PWD/packages:/packages" -v "$PWD/.github:/scripts:ro" \
+            -v "$key_dir/sign.pem:/run/sign.pem:ro" -w /packages alpine:3.24 \
+            sh /scripts/build-apk-feed.sh \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG" \
+            /run/sign.pem zapret2-dushnilin.pub
+          echo "APK_SIGNING_KEY_SHA256=$(sha256sum packages/zapret2-dushnilin.pub | cut -d ' ' -f 1)" >> "$GITHUB_ENV"
 
       - name: List assets
         run: ls -lh packages/
@@ -208,9 +227,13 @@ jobs:
             `.ipk` on opkg) plus the noarch `luci-app-zapret2` for the LuCI UI.
 
             **Signed APKs:** to trust them, drop `zapret2-dushnilin.pub` into
-            `/etc/apk/keys/` on the router. Unsigned installs still work with
-            `apk add --allow-untrusted`.
+            `/etc/apk/keys/` on the router.
+
+            Signed builds also publish `packages-<arch>.adb` containing both
+            packages. See the README for APK feed setup.
+            Public key SHA-256: ${{ env.APK_SIGNING_KEY_SHA256 }}
           files: |
             packages/*.ipk
             packages/*.apk
             packages/*.pub
+            packages/*.adb
