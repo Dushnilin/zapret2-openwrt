@@ -71,6 +71,6 @@ apk mkpkg \
     --script "post-upgrade:$POSTINST" \
     ${APK_SIGN_KEY:+--sign-key "$APK_SIGN_KEY"} \
     --files "$APK" \
-    --output "$OUT_DIR/luci-app-zapret2.apk"
+    --output "$OUT_DIR/luci-app-zapret2_noarch.apk"
 rm -rf "$APK" "$BASE" "$POSTINST"
 echo "Done: luci-app-zapret2 (noarch)"
